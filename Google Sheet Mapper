@@ -1,0 +1,36 @@
+function mapAllWorksheets() {
+  // Get all sheets in the spreadsheet
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var allSheets = spreadsheet.getSheets();
+
+
+  // Create or clear the "Mappings" sheet
+  var outputSheet = spreadsheet.getSheetByName("Mappings") || spreadsheet.insertSheet("Mappings");
+  outputSheet.clear(); // Clear any previous data
+  outputSheet.appendRow(["Worksheet", "Section", "Question", "Column Number", "Column Letter"]); // Header row
+
+
+  // Function to convert column number to letter
+  function columnToLetter(column) {
+    let temp, letter = '';
+    while (column > 0) {
+      temp = (column - 1) % 26;
+      letter = String.fromCharCode(temp + 65) + letter;
+      column = (column - temp - 1) / 26;
+    }
+    return letter;
+  }
+
+
+  // Loop through each worksheet
+  allSheets.forEach(function(sheet) {
+    var sheetName = sheet.getName();
+
+
+    // Skip the "Mappings" and "Forms" sheets
+    if (sheetName === "Mappings" || sheetName === "Forms") {
+      return;
+    }
+
+
+    // Get data from the first row (headers)
