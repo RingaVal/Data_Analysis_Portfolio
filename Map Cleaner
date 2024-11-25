@@ -1,0 +1,25 @@
+function deleteSpecificRows() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Mappings");
+  const data = sheet.getDataRange().getValues();
+  const phrasesToDelete = [
+    "5. Punctuality / Attendance**",
+    "6. Adherence to Company policies***",
+    "This summary outlines the employee's performance in achieving set objectives"
+  ];
+
+
+  let rowsToDelete = [];
+  for (let i = data.length - 1; i >= 0; i--) { // Loop backward to avoid index shifting
+    for (let phrase of phrasesToDelete) {
+      if (data[i].some(cell => cell.toString().includes(phrase))) {
+        rowsToDelete.push(i + 1); // Add 1 for 1-based row index
+        break;
+      }
+    }
+  }
+
+
+  rowsToDelete.forEach(row => {
+    sheet.deleteRow(row);
+  });
+}
