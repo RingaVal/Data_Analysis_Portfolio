@@ -1,6 +1,6 @@
 # Data Analysis Portfolio  
 
-Welcome to my data analysis portfolio! Here, you’ll find a selection of projects that highlight my expertise in using various programming languages and tools to tackle real-world challenges, including HR automation, data scraping, and applicant filtering.  
+Welcome to my data analysis portfolio! Here, you’ll find a selection of projects that highlight my skill in using various programming languages and tools to tackle professional challenges, including HR automation, data scraping, and applicant filtering.  
 
 ---
 
@@ -40,6 +40,4 @@ A toolkit for lead generation, social media insights, and marketing, featuring s
 - **`YT Buldak Videos.ipynb`**: Leverages the YouTube API to gather metadata and analytics for videos in the "Buldak" niche.  
 - **`fbscraper v4.1.ipynb`**: Collects publicly available Facebook data for market research or social listening.  
 
----  
-
-Feel free to explore the projects and use the tools as inspiration for your own work. Contributions and feedback are always welcome!  
+---    
