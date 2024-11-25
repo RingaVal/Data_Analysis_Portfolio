@@ -1,0 +1,228 @@
+function processNewRows() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var allSheets = spreadsheet.getSheets();
+
+
+  allSheets.forEach(function (worksheet) {
+    var sheetName = worksheet.getName();
+
+
+    // Exclude specific worksheets
+    if (sheetName === "Forms" || sheetName === "Mappings") {
+      Logger.log(`Skipping sheet: ${sheetName}`);
+      return;
+    }
+
+
+    var data = worksheet.getDataRange().getValues();
+    var rowCount = data.length;
+    var headers = data[0];
+    var colCount = headers.length;
+
+
+    // Locate or create the WSID column
+    var controlColumnIndex = headers.indexOf("WSID") + 1;
+    if (controlColumnIndex === 0) {
+      // Add the WSID column if it does not exist
+      controlColumnIndex = headers.length + 4;
+      worksheet.getRange(1, controlColumnIndex).setValue("WSID");
+      Logger.log(`Added WSID column to ${sheetName}`);
+    }
+
+
+    // Locate mappings for this worksheet
+    var mappingsSheet = spreadsheet.getSheetByName("Mappings");
+    if (!mappingsSheet) {
+      Logger.log("The 'Mappings' sheet does not exist. Run the mapping function first.");
+      return;
+    }
+
+
+    var mappingsData = mappingsSheet.getDataRange().getValues();
+    var mappedSections = {};
+    mappingsData.slice(1).forEach(function (mappingRow) {
+      var worksheetName = mappingRow[0];
+      var section = mappingRow[1];
+      var columnNumber = mappingRow[3]; // Column number is at index 3 in the Mappings sheet
+
+
+      if (worksheetName === sheetName) {
+        if (!mappedSections[section]) {
+          mappedSections[section] = [];
+        }
+        mappedSections[section].push(columnNumber);
+      }
+    });
+
+
+    // Process rows without a Control Number
+    for (var r = 1; r < rowCount; r++) {
+      var rowValues = data[r];
+      if (rowValues[controlColumnIndex - 1]) continue; // Skip if WSID already exists
+
+
+      // Only process rows with data in mapped columns
+      var isRowMappable = Object.values(mappedSections).some(function (columnNumbers) {
+        return columnNumbers.some(function (col) {
+          return rowValues[col - 1] !== "" && rowValues[col - 1] !== undefined;
+        });
+      });
+
+
+      if (!isRowMappable) continue; // Skip rows with no mappable data
+
+
+      var uniqueSectionCount = Object.keys(mappedSections).length;
+      if (uniqueSectionCount !== 5 && uniqueSectionCount !== 6) {
+        Logger.log(`Skipping row ${r + 1} in ${sheetName} due to invalid section count.`);
+        continue;
+      }
+
+
+      // Introduce a 10-second delay
+      Utilities.sleep(10000);
+
+
+      // Calculate results
+      var weights = uniqueSectionCount === 5 ? [0.40, 0.15, 0.20, 0.15, 0.10] : [0.40, 0.15, 0.20, 0.10, 0.10, 0.05];
+      var weightedResults = Object.values(mappedSections).map(function (columnNumbers, index) {
+        var total = columnNumbers.reduce(function (sum, col) {
+          var value = rowValues[col - 1]; // Convert column number to zero-based index
+          return sum + (typeof value === "number" ? value : 0);
+        }, 0);
+
+
+        var average = columnNumbers.length > 0 ? total / columnNumbers.length : 0;
+        return average * weights[index];
+      });
+
+
+      var finalScore = weightedResults.reduce(function (sum, val) {
+        return sum + val;
+      }, 0);
+
+
+      // Generate Control Number
+      var baseIdentifier = sheetName.split(" ").map(word => word[0]).join("").toUpperCase();
+      var controlNumber = baseIdentifier + String(r).padStart(4, "0");
+      worksheet.getRange(r + 1, controlColumnIndex).setValue(controlNumber);
+
+
+      // Add new columns for ratings
+      var ratingsStartColumn = controlColumnIndex + 1;
+      var columnHeaders = uniqueSectionCount === 5
+        ? ["Objective", "Knowledge and Skills", "Performance", "Habits and Attitude", "Adherence to Core Values", "Total Rating"]
+        : ["Objective", "Knowledge and Skills", "Performance", "Habits and Attitude", "Adherence to Core Values", "Leadership Skills", "Total Rating"];
+      worksheet.getRange(1, ratingsStartColumn, 1, columnHeaders.length).setValues([columnHeaders]);
+
+
+      var ratingValues = uniqueSectionCount === 5
+        ? [...weightedResults, finalScore]
+        : [...weightedResults, finalScore];
+
+
+      worksheet.getRange(r + 1, ratingsStartColumn, 1, ratingValues.length).setValues([ratingValues]);
+
+
+      // Send evaluation email
+      var email = rowValues[1]; // Assumes email is in column B
+      var recipientName = rowValues[2]; // Assumes name is in column C
+      var subjectName = rowValues[3]; // Assumes subject name is in column D
+      sendEvaluationEmail(
+        uniqueSectionCount,
+        weightedResults,
+        finalScore,
+        controlNumber,
+        email,
+        recipientName,
+        subjectName,
+        sheetName
+      );
+    }
+  });
+}
+
+
+function sendEvaluationEmail(uniqueSectionCount, weightedResults, finalScore, controlNumber, email, recipientName, subjectName, sheetName) {
+  if (!email) {
+    Logger.log("No email provided for row.");
+    return;
+  }
+
+
+  // Define email subject and message based on the sheet name
+  var subject, message;
+  if (sheetName.toLowerCase().includes("goal")) {
+    subject = `Goal Alignment Summary: ${recipientName}`;
+    message = `
+      <p>Dear <b>${subjectName}</b>,</p>
+      <p>Thank you for completing the goal alignment.</p>
+      <p>Here are the summary of ratings:</p>
+      <ul>`;
+  } else {
+    subject = `Evaluation/Assessment Summary: ${recipientName}`;
+    message = `
+      <p>Dear <b>${subjectName}</b>,</p>
+      <p>Thank you for completing the evaluation/assessment.</p>
+      <p>Here are the summary of ratings:</p>
+      <ul>`;
+  }
+
+
+  if (uniqueSectionCount === 5) {
+    message += `
+      <li><b>Objective:</b> ${weightedResults[0].toFixed(2)}</li>
+      <li><b>Knowledge and Skills:</b> ${weightedResults[1].toFixed(2)}</li>
+      <li><b>Performance:</b> ${weightedResults[2].toFixed(2)}</li>
+      <li><b>Habits and Attitude:</b> ${weightedResults[3].toFixed(2)}</li>
+      <li><b>Adherence to Core Values:</b> ${weightedResults[4].toFixed(2)}</li>`;
+  } else if (uniqueSectionCount === 6) {
+    message += `
+      <li><b>Objective:</b> ${weightedResults[0].toFixed(2)}</li>
+      <li><b>Knowledge and Skills:</b> ${weightedResults[1].toFixed(2)}</li>
+      <li><b>Performance:</b> ${weightedResults[2].toFixed(2)}</li>
+      <li><b>Habits and Attitude:</b> ${weightedResults[3].toFixed(2)}</li>
+      <li><b>Adherence to Core Values:</b> ${weightedResults[4].toFixed(2)}</li>
+      <li><b>Leadership Skills:</b> ${weightedResults[5].toFixed(2)}</li>`;
+  }
+
+
+  if (sheetName.toLowerCase().includes("goal")) {
+    message += `
+      </ul>
+      <p><b>Total Rating:</b> ${finalScore.toFixed(2)}</p>
+      <p><b>To help you interpret your results, kindly refer to the following:</b></p>
+      <ul>
+        <li><b>2.6 - 3.0:</b> FULLY SATISFACTORY</li>
+        <li><b>1.9 - 2.5:</b> NEEDS IMPROVEMENT</li>
+        <li><b>1.0 - 1.8:</b> UNSATISFACTORY</li>
+      </ul>`;
+  } else {
+    message += `
+      </ul>
+      <p><b>Total Rating:</b> ${finalScore.toFixed(2)}</p>
+      <p><b>To help you interpret your results, kindly refer to the following:</b></p>
+      <ul>
+        <li><b>4.6 - 5.0:</b> OUTSTANDING</li>
+        <li><b>4.0 - 4.5:</b> EXCEEDS EXPECTATIONS</li>
+        <li><b>3.0 - 3.9:</b> FULLY SATISFACTORY</li>
+        <li><b>2.0 - 2.9:</b> NEEDS IMPROVEMENT</li>
+        <li><b>1.0 - 1.9:</b> UNSATISFACTORY</li>
+      </ul>`;
+  }
+
+
+  message += `
+    <p><b>Note:</b> Results on punctuality, attendance, and adherence to company policies may change based on the combined evaluation of the Immediate Head and the HR Department. Should you have any questions, please feel free to contact the HR Department.</p>
+    <p><b>Reference number:</b> ${controlNumber}</p>`;
+
+
+  MailApp.sendEmail({
+    to: `${email}`,
+    subject: subject,
+    htmlBody: message
+  });
+
+
+  Logger.log(`Email sent to ${email}:\n${message}`);
+}
