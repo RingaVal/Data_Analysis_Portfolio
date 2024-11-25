@@ -1,0 +1,90 @@
+function mapAllWorksheets() {
+  // Get all sheets in the spreadsheet
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var allSheets = spreadsheet.getSheets();
+
+
+  // Create or clear the "Mappings" sheet
+  var outputSheet = spreadsheet.getSheetByName("Mappings") || spreadsheet.insertSheet("Mappings");
+  outputSheet.clear(); // Clear any previous data
+  outputSheet.appendRow(["Worksheet", "Section", "Question", "Column Number", "Column Letter"]); // Header row
+
+
+  // Function to convert column number to letter
+  function columnToLetter(column) {
+    let temp, letter = '';
+    while (column > 0) {
+      temp = (column - 1) % 26;
+      letter = String.fromCharCode(temp + 65) + letter;
+      column = (column - temp - 1) / 26;
+    }
+    return letter;
+  }
+
+
+  // Loop through each worksheet
+  allSheets.forEach(function(sheet) {
+    var sheetName = sheet.getName();
+
+
+    // Skip the "Mappings" and "Forms" sheets
+    if (sheetName === "Mappings" || sheetName === "Forms") {
+      return;
+    }
+
+
+    // Get data from the first row (headers)
+    var data = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+
+    // Initialize an object to store section mappings for this sheet
+    var sectionMappings = {};
+    var currentSection = ""; // To track the current section name or number
+
+
+    // Loop through the columns in the first row (headers)
+    for (var col = 0; col < data.length; col++) {
+      var cellValue = data[col];
+
+
+      // Stop mapping when the phrase "6. Adherence to Company policies***" is encountered
+      if (typeof cellValue === "string" && cellValue.trim() === "6. Adherence to Company policies***") {
+        Logger.log(`Stopping mapping for worksheet: ${sheetName} at column ${col + 1}`);
+        break; // Exit the loop for this worksheet
+      }
+
+
+      // Check if the cell marks the start of a new section
+      if (typeof cellValue === "string" && cellValue.match(/(^|\s)1\./)) {
+        // Ensure it is "1." and not part of "11.", "21.", etc.
+        if (!cellValue.match(/\b[2-9][0-9]*\./)) {
+          // Set this as the start of a new section
+          currentSection = "Section " + (Object.keys(sectionMappings).length + 1); // Dynamic section naming
+          sectionMappings[currentSection] = []; // Initialize an array for this section
+        }
+      }
+
+
+      // If we're in a section, check for questions (assuming it starts with a number like "1.")
+      if (currentSection && typeof cellValue === "string" && cellValue.match(/\d+\.\s*/)) {
+        // Add the question, column number, and column letter to the current section's array
+        sectionMappings[currentSection].push({
+          question: cellValue.trim(),
+          columnNumber: col + 1, // Convert to 1-based column numbering
+          columnLetter: columnToLetter(col + 1)
+        });
+      }
+    }
+
+
+    // Write the section mappings to the output sheet
+    for (var section in sectionMappings) {
+      sectionMappings[section].forEach(function(entry) {
+        outputSheet.appendRow([sheetName, section, entry.question, entry.columnNumber, entry.columnLetter]);
+      });
+    }
+  });
+
+
+  Logger.log("All worksheets (except 'Mappings' and 'Forms') mapped successfully into the 'Mappings' sheet.");
+}
